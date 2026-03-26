@@ -1,0 +1,32 @@
+/**
+ * @file app/globals.css
+ * @description Styles globaux de l'application RadIA (Tailwind CSS + reset).
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Variables CSS globales */
+:root {
+  --font-inter: "Inter", sans-serif;
+}
+
+/* Styles d'impression pour l'export PDF des rapports */
+@media print {
+  nav,
+  footer,
+  button,
+  aside {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+    color: black;
+  }
+
+  .print\:block {
+    display: block !important;
+  }
+}
