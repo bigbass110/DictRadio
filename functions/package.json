@@ -1,0 +1,37 @@
+{
+  "name": "radia-functions",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RadIA — Cloud Functions Firebase avec Genkit (Flows IA)",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions",
+    "genkit:dev": "genkit start -- tsx --watch src/index.ts",
+    "lint": "eslint --ext .ts src/"
+  },
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "@genkit-ai/ai": "^0.5.4",
+    "@genkit-ai/core": "^0.5.4",
+    "@genkit-ai/firebase": "^0.5.4",
+    "@genkit-ai/flow": "^0.5.4",
+    "@genkit-ai/googleai": "^0.5.4",
+    "firebase-admin": "^12.2.0",
+    "firebase-functions": "^5.0.1",
+    "openai": "^4.52.7",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.13.0",
+    "genkit": "^0.5.4",
+    "tsx": "^4.15.7",
+    "typescript": "^5.4.5"
+  }
+}

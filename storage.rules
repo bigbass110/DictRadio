@@ -1,0 +1,38 @@
+rules_version = '2';
+
+/**
+ * Règles de sécurité Firebase Storage pour RadIA.
+ *
+ * Firebase Storage est utilisé pour le stockage temporaire des fichiers audio
+ * avant transcription. Les fichiers sont supprimés automatiquement après 24h
+ * via une Cloud Function de nettoyage planifiée.
+ *
+ * Structure des chemins :
+ * - `audio/{userId}/{filename}` : fichiers audio temporaires
+ *
+ * @see https://firebase.google.com/docs/storage/security
+ */
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Fichiers audio temporaires des utilisateurs
+    match /audio/{userId}/{allPaths=**} {
+      // Lecture : uniquement le propriétaire du fichier
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // Écriture : uniquement le propriétaire, fichier < 25 Mo, format audio
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 25 * 1024 * 1024  // 25 Mo max (limite Whisper)
+        && request.resource.contentType.matches('audio/.*');
+
+      // Suppression : le propriétaire peut supprimer ses propres fichiers
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Interdire tout autre accès
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

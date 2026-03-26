@@ -1,0 +1,148 @@
+rules_version = '2';
+
+/**
+ * Règles de sécurité Firestore pour RadIA.
+ *
+ * Ces règles définissent qui peut lire et écrire dans chaque collection.
+ * Elles constituent la première ligne de défense contre les accès non autorisés.
+ *
+ * Principe de moindre privilège :
+ * - Par défaut, tout est refusé.
+ * - Les accès sont accordés explicitement pour chaque collection.
+ *
+ * Collections concernées :
+ * - `rapports` : comptes rendus radiologiques
+ * - `templates` : templates de protocoles normaux
+ * - `utilisateurs` : profils des radiologues
+ * - `guideline_chunks` : extraits des guidelines (RAG pour Dr Vox)
+ *
+ * @see https://firebase.google.com/docs/firestore/security/get-started
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------------------------------------------------------
+    // Fonctions utilitaires
+    // -----------------------------------------------------------------------
+
+    /**
+     * Vérifie que l'utilisateur est authentifié via Firebase Auth.
+     * Condition minimale pour accéder à n'importe quelle donnée.
+     */
+    function estAuthentifie() {
+      return request.auth != null;
+    }
+
+    /**
+     * Vérifie que l'utilisateur est l'auteur ou le sujet du document.
+     * Utilisé pour les rapports (radiologue = auteur) et les profils.
+     */
+    function estProprietaire(userId) {
+      return estAuthentifie() && request.auth.uid == userId;
+    }
+
+    /**
+     * Vérifie que l'utilisateur a le rôle "administrateur"
+     * en consultant son document dans la collection `utilisateurs`.
+     */
+    function estAdmin() {
+      return estAuthentifie() &&
+        get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role == "administrateur";
+    }
+
+    /**
+     * Vérifie que l'utilisateur est un professionnel de santé
+     * (radiologue ou manipulateur) — peut accéder aux rapports.
+     */
+    function estProfessionnelDeSante() {
+      return estAuthentifie() &&
+        get(/databases/$(database)/documents/utilisateurs/$(request.auth.uid)).data.role in
+        ["radiologue", "manipulateur", "administrateur"];
+    }
+
+    // -----------------------------------------------------------------------
+    // Collection : rapports
+    // -----------------------------------------------------------------------
+    // Contient les comptes rendus radiologiques.
+    // Accès restreint au radiologue auteur et aux administrateurs.
+
+    match /rapports/{rapportId} {
+      // Lecture : uniquement l'auteur du rapport ou un admin
+      allow read: if estAuthentifie() &&
+        (resource.data.radiologueId == request.auth.uid || estAdmin());
+
+      // Création : tout professionnel authentifié peut créer un rapport
+      // L'UID de l'auteur doit correspondre à l'UID authentifié
+      allow create: if estProfessionnelDeSante() &&
+        request.resource.data.radiologueId == request.auth.uid;
+
+      // Mise à jour : uniquement l'auteur du rapport ou un admin
+      // Un rapport "valide" ne peut plus être modifié (sauf par un admin)
+      allow update: if estAuthentifie() &&
+        (resource.data.radiologueId == request.auth.uid && resource.data.statut != "valide")
+        || estAdmin();
+
+      // Suppression : uniquement les admins
+      allow delete: if estAdmin();
+    }
+
+    // -----------------------------------------------------------------------
+    // Collection : templates
+    // -----------------------------------------------------------------------
+    // Contient les templates de protocoles normaux.
+    // Lecture par tous les professionnels, écriture par les admins.
+
+    match /templates/{templateId} {
+      // Lecture : tous les professionnels peuvent lire les templates
+      allow read: if estProfessionnelDeSante();
+
+      // Écriture : uniquement les administrateurs
+      allow write: if estAdmin();
+    }
+
+    // -----------------------------------------------------------------------
+    // Collection : utilisateurs
+    // -----------------------------------------------------------------------
+    // Contient les profils des radiologues et manipulateurs.
+
+    match /utilisateurs/{userId} {
+      // Lecture : l'utilisateur peut lire son propre profil, les admins lisent tout
+      allow read: if estProprietaire(userId) || estAdmin();
+
+      // Création/mise à jour : l'utilisateur gère son propre profil
+      // Seul un admin peut modifier le champ `role`
+      allow create: if estProprietaire(userId) &&
+        request.resource.data.role in ["radiologue", "manipulateur"];
+
+      allow update: if estProprietaire(userId) &&
+        // Empêcher l'auto-promotion : le rôle ne doit pas changer
+        // sauf si l'admin effectue la mise à jour.
+        // On vérifie directement la valeur du champ `role` plutôt que d'utiliser
+        // affectedKeys() qui ne fonctionne pas correctement lors d'un remplacement total.
+        (request.resource.data.role == resource.data.role || estAdmin());
+
+      allow delete: if estAdmin();
+    }
+
+    // -----------------------------------------------------------------------
+    // Collection : guideline_chunks
+    // -----------------------------------------------------------------------
+    // Contient les extraits des guidelines médicales pour le RAG de Dr Vox.
+    // Lecture par tous les professionnels, écriture réservée aux admins.
+
+    match /guideline_chunks/{chunkId} {
+      allow read: if estProfessionnelDeSante();
+      allow write: if estAdmin();
+    }
+
+    // -----------------------------------------------------------------------
+    // Règle par défaut : tout refuser
+    // -----------------------------------------------------------------------
+    // Cette règle implicite couvre toutes les collections non définies.
+    // Explicitement documentée pour la clarté.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
